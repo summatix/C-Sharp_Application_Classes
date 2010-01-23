@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual Studio 2008
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WPF", "WPF\WPF.csproj", "{93D86A4C-7471-43C5-8722-2C029FC2F238}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wpf", "WPF\Wpf.csproj", "{93D86A4C-7471-43C5-8722-2C029FC2F238}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SuperLibrary", "SuperLibrary\SuperLibrary.csproj", "{C8DC45BF-B446-43FA-AD32-AA89FB2B72FA}"
 EndProject

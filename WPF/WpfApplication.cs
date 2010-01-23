@@ -1,42 +1,41 @@
 ﻿#region Header
 
-/*
- * Copyright (c) Robert Roose 2009
- *
- *  All rights reserved.
- *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted provided that the following conditions are
- *  met:
- *
- *      * Redistributions of source code must retain the above copyright
- *        notice, this list of conditions and the following disclaimer.
- *      * Neither the name of the copyright holder nor the names of its
- *        contributors may be used to endorse or promote products derived from
- *        this software without specific prior written permission.
- *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- *  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- *  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- *  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- *  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- *  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- *  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
- *  THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) ShiverCube 2010
+//
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+//
+//    * Redistributions of source code must retain the above copyright
+//      notice, this list of conditions and the following disclaimer.
+//    * Neither the name of the copyright holder nor the names of its
+//      contributors may be used to endorse or promote products derived from
+//      this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+// THE POSSIBILITY OF SUCH DAMAGE.
 
 #endregion Header
 
-namespace WPF
+namespace Wpf
 {
-    using Microsoft.VisualBasic.ApplicationServices;
     using System;
     using System.Collections;
+    using System.Collections.Generic;
     using System.Collections.ObjectModel;
     using System.ComponentModel;
+    using System.Diagnostics.CodeAnalysis;
     using System.Reflection;
     using System.Security;
     using System.Windows;
@@ -44,67 +43,23 @@ namespace WPF
     using System.Windows.Resources;
     using System.Windows.Threading;
 
+    using Microsoft.VisualBasic.ApplicationServices;
+
     using ShutdownMode = System.Windows.ShutdownMode;
     using StartupEventArgs = System.Windows.StartupEventArgs;
     using StartupEventHandler = System.Windows.StartupEventHandler;
 
-    #region Delegates
-
-    /// <summary>
-    /// Represents the method that handles the WpfApplication.StartupNextInstance event.
-    /// </summary>
-    /// <param name="sender">The object that raised the event.</param>
-    /// <param name="e">The event data.</param>
-    public delegate void StartupNextInstanceEventHandler(object sender, StartupNextInstanceEventArgs e);
-
-    #endregion Delegates
-
-    /// <summary>
-    /// Contains the arguments for the WpfApplication.StartupNextInstance event
-    /// </summary>
-    public class StartupNextInstanceEventArgs : EventArgs
-    {
-        #region Constructors
-
-        /// <summary>
-        /// Initializes the instance.
-        /// </summary>
-        /// <param name="args">The command line arguments that were passed to the application.</param>
-        public StartupNextInstanceEventArgs(string[] args)
-        {
-            Args = args;
-        }
-
-        #endregion Constructors
-
-        #region Properties
-
-        /// <summary>
-        /// Gets command line arguments that were passed to the application from either the command prompt or the
-        /// desktop.
-        /// </summary>
-        /// <returns>A string array that contains the command line arguments that were passed to the application from
-        /// either the command prompt or the desktop. If no command line arguments were passed, the string array as
-        /// zero items.</returns>
-        public string[] Args
-        {
-            get;
-            private set;
-        }
-
-        #endregion Properties
-    }
-
     /// <summary>
     /// Encapsulates a Windows Presentation Foundation (WPF) application and provides single instance support
     /// </summary>
-    public class WpfApplication : DependencyObject
+    public class WpfApplication
     {
         #region Fields
 
-        private readonly Application _app = new Application();
+        private readonly Application _app;
 
         private static string _handleMissingAssemblyMessage = "{0} is needed to enable this application to run.";
+
         private static string _unhandledExceptionMessage =
             "A fatal error has occurred and the program has been unable to recover.";
 
@@ -113,24 +68,25 @@ namespace WPF
 
         #endregion Fields
 
-        #region Constructors
-
         /// <summary>
         /// Initializes a new instance of the WpfApplication class.
+        /// Pre: An Application instance has not already been started
         /// </summary>
-        /// <exception cref="InvalidOperationException">More than one instance of the System.Windows.Application class
-        /// is created per System.AppDomain.</exception>
+        /// <exception cref="ArgumentNullException">If app is null</exception>
+        /// <param name="app">The Application object that this instance will be a wrapper around</param>
         [SecurityCritical]
-        public WpfApplication()
+        public WpfApplication(Application app)
         {
+            if (app == null)
+            {
+                throw new ArgumentNullException("app");
+            }
+
+            _app = app;
             Current = this;
-            InitializeEvents();
-
-            // TODO: Solve why this randomly fails
-            AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
+            _app.DispatcherUnhandledException += (s, e) => OnDispatcherUnhandledException(e);
+            AppDomain.CurrentDomain.AssemblyResolve += (s, e) => OnResolveEventHandler(e);
         }
-
-        #endregion Constructors
 
         #region Events
 
@@ -208,7 +164,7 @@ namespace WPF
         /// <summary>
         /// Occurs when a new instance of the application is run and the application has been set to single instance
         /// </summary>
-        public event StartupNextInstanceEventHandler StartupNextInstance;
+        public event EventHandler<StartupNextInstanceEventArgs> StartupNextInstance;
 
         #endregion Events
 
@@ -218,11 +174,7 @@ namespace WPF
         /// Gets the WpfApplication object for the current System.AppDomain.
         /// </summary>
         /// <returns>The WpfApplication object for the current System.AppDomain.</returns>
-        public static WpfApplication Current
-        {
-            get;
-            private set;
-        }
+        public static WpfApplication Current { get; private set; }
 
         /// <summary>
         /// Gets or sets the default message to display when the exception of a missing assembly reference occurs.
@@ -257,17 +209,13 @@ namespace WPF
         }
 
         /// <summary>
-        /// Gets or sets whether to handle the event of an unhandled exception.
+        /// Gets or sets a value indicating whether to handle the event of an unhandled exception.
         /// </summary>
         [DefaultValue(false)]
-        public bool HandleUnhandledException
-        {
-            get;
-            set;
-        }
+        public bool HandleUnhandledException { get; set; }
 
         /// <summary>
-        /// Gets or sets whether to handle the event of a missing library reference (a missing DLL).
+        /// Gets or sets a value indicating whether to handle the event of a missing library reference (a missing DLL).
         /// </summary>
         [DefaultValue(true)]
         public bool HandleUnresolvedAssembly
@@ -277,13 +225,21 @@ namespace WPF
         }
 
         /// <summary>
-        /// Gets or sets whether this application is a single instance application
+        /// Gets or sets a value indicating whether this application is a single instance application
         /// </summary>
         [DefaultValue(true)]
         public bool IsSingleInstance
         {
             get { return _isSingleInstance; }
             set { _isSingleInstance = value; }
+        }
+
+        /// <summary>
+        /// Gets the System.Windows.Application instance of the application
+        /// </summary>
+        public Application Application
+        {
+            get { return _app; }
         }
 
         /// <summary>
@@ -312,6 +268,8 @@ namespace WPF
         /// </summary>
         /// <returns>A System.Windows.ResourceDictionary object that contains zero or more application-scope
         /// resources.</returns>
+        [SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly",
+            Justification = "Consistent with System.Windows.Application class")]
         public ResourceDictionary Resources
         {
             get { return _app.Resources; }
@@ -442,7 +400,7 @@ namespace WPF
         /// <exception cref="ArgumentException">The resourceLocator is an absolute URI.</exception>
         /// <exception cref="Exception">The file is not a XAML file.</exception>
         /// <param name="resourceLocator">A System.Uri that maps to a relative XAML file.</param>
-        /// <returns></returns>
+        /// <returns>The return value is not documented</returns>
         public static object LoadComponent(Uri resourceLocator)
         {
             return Application.LoadComponent(resourceLocator);
@@ -757,7 +715,7 @@ namespace WPF
         /// <param name="e">The arguments that describe this event.</param>
         protected virtual void OnStartupNextInstance(StartupNextInstanceEventArgs e)
         {
-            if (Startup != null)
+            if (StartupNextInstance != null)
             {
                 StartupNextInstance(this, e);
             }
@@ -772,6 +730,9 @@ namespace WPF
         /// </summary>
         /// <param name="itemName">The item to retreive the name for</param>
         /// <returns>The missing assembly filename</returns>
+        [SuppressMessage("Microsoft.Globalization", "CA1305:SpecifyIFormatProvider",
+            MessageId = "System.String.Format(System.String,System.Object)",
+            Justification = "This method is used to format a DLL filename")]
         private static string GetFileName(string itemName)
         {
             return string.Format("{0}.dll", new AssemblyName(itemName).Name);
@@ -783,6 +744,9 @@ namespace WPF
         /// <param name="format">A composite format string.</param>
         /// <param name="arg">The value to format.</param>
         /// <returns>The formatted string or string.Empty if there was an error.</returns>
+        [SuppressMessage("Microsoft.Globalization", "CA1305:SpecifyIFormatProvider",
+            MessageId = "System.String.Format(System.String,System.Object)",
+            Justification = "This method is used to replace the given argument within the given string")]
         private static string GetFormattedMessage(string format, string arg)
         {
             if (string.IsNullOrEmpty(format))
@@ -805,17 +769,6 @@ namespace WPF
         #region Private Methods
 
         /// <summary>
-        /// Called when an assembly is missing
-        /// </summary>
-        /// <param name="sender">Not used</param>
-        /// <param name="args">The event handler arguemnts</param>
-        /// <returns>The found assembly or null if it cannot be resolved</returns>
-        private Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
-        {
-            return OnResolveEventHandler(args);
-        }
-
-        /// <summary>
         /// Displays an error messge to the user about the missing assembly file and then exits the system.
         /// </summary>
         /// <param name="filename">The filename of the missing assembly</param>
@@ -831,26 +784,6 @@ namespace WPF
             }
 
             Environment.Exit(1);
-        }
-
-        /// <summary>
-        /// Initializes the Application event wrappers
-        /// </summary>
-        private void InitializeEvents()
-        {
-            _app.Activated += ((sender, e) => OnActivated(e));
-            _app.Deactivated += ((sender, e) => OnDeactivated(e));
-            _app.DispatcherUnhandledException += ((sender, e) => OnDispatcherUnhandledException(e));
-            _app.Exit += ((sender, e) => OnExit(e));
-            _app.FragmentNavigation += ((sender, e) => OnFragmentNavigation(e));
-            _app.LoadCompleted += ((sender, e) => OnLoadCompleted(e));
-            _app.Navigated += ((sender, e) => OnNavigated(e));
-            _app.Navigating += ((sender, e) => OnNavigating(e));
-            _app.NavigationFailed += ((sender, e) => OnNavigationFailed(e));
-            _app.NavigationProgress += ((sender, e) => OnNavigationProgress(e));
-            _app.NavigationStopped += ((sender, e) => OnNavigationStopped(e));
-            _app.SessionEnding += ((sender, e) => OnSessionEnding(e));
-            _app.Startup += ((sender, e) => OnStartup(e));
         }
 
         /// <summary>
@@ -880,16 +813,10 @@ namespace WPF
         /// </summary>
         private class SingleInstanceApplicationWrapper : WindowsFormsApplicationBase
         {
-            #region Fields
-
             private readonly WpfApplication _app;
 
-            #endregion Fields
-
-            #region Constructors
-
             /// <summary>
-            /// Initializes the instance
+            /// Initializes a new instance of the SingleInstanceApplicationWrapper class
             /// </summary>
             /// <param name="app">The reference to the WPF application instance</param>
             /// <param name="isSingleInstance">Set to true to make the application a single instance
@@ -900,34 +827,16 @@ namespace WPF
                 IsSingleInstance = isSingleInstance;
             }
 
-            #endregion Constructors
-
-            #region Properties
-
             /// <summary>
             /// Gets the return code returned from the WpfApplication
             /// </summary>
-            public int ReturnCode
-            {
-                get;
-                private set;
-            }
+            public int ReturnCode { get; private set; }
 
             /// <summary>
             /// Gets or sets the Window instance to provide to the WpfApplication.Run(Window) method. If null,
             /// WpfApplication.Run() will be called instead
             /// </summary>
-            public Window Window
-            {
-                private get;
-                set;
-            }
-
-            #endregion Properties
-
-            #region Methods
-
-            #region Protected Methods
+            public Window Window { private get; set; }
 
             /// <summary>
             /// Runs the WpfApplication instance inside this wrapper, returning only when this application wrapper has
@@ -960,14 +869,14 @@ namespace WPF
             {
                 // Convert the ReadOnlyCollection<string> arguments to a string[] collection of arguments and remove
                 // the first argument which will always be the application path
-                ReadOnlyCollection<string> argsCollection = eventArgs.CommandLine;
-                int count = argsCollection.Count - 1;
+                var argsCollection = eventArgs.CommandLine;
+                var count = argsCollection.Count - 1;
                 string[] args;
 
                 if (count > 0)
                 {
                     args = new string[eventArgs.CommandLine.Count - 1];
-                    for (int i = 0; i < count; ++i)
+                    for (var i = 0; i < count; ++i)
                     {
                         args[i] = argsCollection[i + 1];
                     }
@@ -979,12 +888,32 @@ namespace WPF
 
                 _app.OnStartupNextInstance(new StartupNextInstanceEventArgs(args));
             }
-
-            #endregion Protected Methods
-
-            #endregion Methods
         }
 
         #endregion Nested Types
+    }
+
+    /// <summary>
+    /// Contains the arguments for the WpfApplication.StartupNextInstance event
+    /// </summary>
+    public class StartupNextInstanceEventArgs : EventArgs
+    {
+        /// <summary>
+        /// Initializes a new instance of the StartupNextInstanceEventArgs class
+        /// </summary>
+        /// <param name="args">The command line arguments that were passed to the application.</param>
+        public StartupNextInstanceEventArgs(IEnumerable<string> args)
+        {
+            Args = new ReadOnlyCollection<string>(new List<string>(args));
+        }
+
+        /// <summary>
+        /// Gets command line arguments that were passed to the application from either the command prompt or the
+        /// desktop.
+        /// </summary>
+        /// <returns>A string array that contains the command line arguments that were passed to the application from
+        /// either the command prompt or the desktop. If no command line arguments were passed, the string array as
+        /// zero items.</returns>
+        public ReadOnlyCollection<string> Args { get; private set; }
     }
 }

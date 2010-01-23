@@ -1,2 +1,5 @@
 
+_ReSharper.ApplicationClasses
 *.suo
+*.user
+*.FxCop

@@ -33,19 +33,23 @@
 namespace Console
 {
     using System;
+    using System.Collections.Generic;
+    using System.Collections.ObjectModel;
     using System.ComponentModel;
+    using System.Diagnostics.CodeAnalysis;
     using System.Reflection;
     using System.Security;
 
     /// <summary>
     /// Encapsulates a Console application
     /// </summary>
-    public class ConsoleApplication
+    public abstract class ConsoleApplication
     {
         #region Fields
 
         private static string _handleMissingAssemblyMessage = "{0} is needed to enable this application to run.";
-        private static string _unhandledExceptionMessage = 
+
+        private static string _unhandledExceptionMessage =
             "A fatal error has occurred and the program has been unable to recover.";
 
         private bool _handleUnhandledException = true;
@@ -53,15 +57,13 @@ namespace Console
 
         #endregion Fields
 
-        #region Constructors
-
         /// <summary>
         /// Initializes a new instance of the ConsoleApplication class
         /// </summary>
         /// <exception cref="InvalidOperationException">More than one instance of the ConsoleApplication class is
         /// created per System.AppDomain.</exception>
         [SecurityCritical]
-        public ConsoleApplication()
+        protected ConsoleApplication()
         {
             if (Current != null)
             {
@@ -74,18 +76,12 @@ namespace Console
             Current = this;
         }
 
-        #endregion Constructors
-
         #region Properties
 
         /// <summary>
         /// Gets the ConsoleApplication object for the current System.AppDomain
         /// </summary>
-        public static ConsoleApplication Current
-        {
-            get;
-            private set;
-        }
+        public static ConsoleApplication Current { get; private set; }
 
         /// <summary>
         /// Gets or sets the default message to display when the exception of a missing assembly reference occurs.
@@ -108,14 +104,10 @@ namespace Console
         /// <summary>
         /// Gets the command line arguments provided to the application
         /// </summary>
-        public string[] Args
-        {
-            get;
-            private set;
-        }
+        public ReadOnlyCollection<string> Args { get; private set; }
 
         /// <summary>
-        /// Gets or sets whether to handle the event of an unhandled exception.
+        /// Gets or sets a value indicating whether to handle the event of an unhandled exception
         /// </summary>
         [DefaultValue(true)]
         public bool HandleUnhandledException
@@ -125,7 +117,7 @@ namespace Console
         }
 
         /// <summary>
-        /// Gets or sets whether to handle the event of a missing library reference (a missing DLL).
+        /// Gets or sets a value indicating whether to handle the event of a missing library reference (a missing DLL)
         /// </summary>
         [DefaultValue(true)]
         public bool HandleUnresolvedAssembly
@@ -138,39 +130,36 @@ namespace Console
 
         #region Methods
 
-        #region Public Methods
-
         /// <summary>
         /// Starts the application
         /// </summary>
         /// <param name="args">The command line arguments provided to the application</param>
-        public void Start(string[] args)
+        public void Start(IEnumerable<string> args)
         {
             if (args == null)
             {
                 throw new ArgumentException("args must not be null");
             }
 
+            Args = new ReadOnlyCollection<string>(new List<string>(args));
+
             OnStartup();
         }
 
-        #endregion Public Methods
-
-        #region Protected Static Methods
+        #region Protected Methods
 
         /// <summary>
         /// Get the missing assembly filename from the given missing item name
         /// </summary>
         /// <param name="itemName">The item to retreive the name for</param>
         /// <returns>The missing assembly filename</returns>
+        [SuppressMessage("Microsoft.Globalization", "CA1305:SpecifyIFormatProvider",
+            MessageId = "System.String.Format(System.String,System.Object)",
+            Justification = "This method is used to format a DLL filename")]
         protected static string GetFileName(string itemName)
         {
             return string.Format("{0}.dll", new AssemblyName(itemName).Name);
         }
-
-        #endregion Protected Static Methods
-
-        #region Protected Methods
 
         /// <summary>
         /// Called when an assembly is missing. Displays a message to the user and exits the application
@@ -179,8 +168,7 @@ namespace Console
         /// <returns>null to indicate that the assembly could not be found</returns>
         protected virtual Assembly OnResolveAssembly(ResolveEventArgs args)
         {
-            string filename = GetFileName(args.Name);
-
+            var filename = GetFileName(args.Name);
             if (HandleUnresolvedAssembly)
             {
                 HandleMissingAssembly(filename);
@@ -192,9 +180,7 @@ namespace Console
         /// <summary>
         /// Called when the application has started. Override this method to implement the application's functionality
         /// </summary>
-        protected virtual void OnStartup()
-        {
-        }
+        protected abstract void OnStartup();
 
         /// <summary>
         /// Called when an unhandled exception occur. Displays a message to the user before the application exits
@@ -204,7 +190,7 @@ namespace Console
         {
             if (HandleUnhandledException)
             {
-                System.Console.WriteLine(UnhandledExceptionMessage);
+                Console.WriteLine(UnhandledExceptionMessage);
                 Environment.Exit(1);
             }
         }
@@ -212,6 +198,42 @@ namespace Console
         #endregion Protected Methods
 
         #region Private Methods
+
+        /// <summary>
+        /// Returns the formatted string message, or an empty string if there is an error.
+        /// </summary>
+        /// <param name="format">A composite format string.</param>
+        /// <param name="arg">The value to format.</param>
+        /// <returns>The formatted string or string.Empty if there was an error.</returns>
+        [SuppressMessage("Microsoft.Globalization", "CA1305:SpecifyIFormatProvider",
+            MessageId = "System.String.Format(System.String,System.Object)",
+            Justification = "This method is used to replace the given argument within the given string")]
+        private static string GetFormattedMessage(string format, string arg)
+        {
+            if (string.IsNullOrEmpty(format))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                return string.Format(format, arg);
+            }
+            catch (FormatException)
+            {
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Displays an error messge to the user about the missing assembly file and then exits the system.
+        /// </summary>
+        /// <param name="filename">The filename of the missing assembly</param>
+        private static void HandleMissingAssembly(string filename)
+        {
+            Console.WriteLine(GetFormattedMessage(HandleMissingAssemblyMessage, filename));
+            Environment.Exit(1);
+        }
 
         /// <summary>
         /// Called when an assembly is missing
@@ -232,39 +254,6 @@ namespace Console
         private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             OnUnhandledException(e);
-        }
-
-        /// <summary>
-        /// Returns the formatted string message, or an empty string if there is an error.
-        /// </summary>
-        /// <param name="format">A composite format string.</param>
-        /// <param name="arg">The value to format.</param>
-        /// <returns>The formatted string or string.Empty if there was an error.</returns>
-        private string GetFormattedMessage(string format, string arg)
-        {
-            if (format == null || format == string.Empty)
-            {
-                return string.Empty;
-            }
-
-            try
-            {
-                return string.Format(format, arg);
-            }
-            catch (FormatException)
-            {
-                return string.Empty;
-            }
-        }
-
-        /// <summary>
-        /// Displays an error messge to the user about the missing assembly file and then exits the system.
-        /// </summary>
-        /// <param name="filename">The filename of the missing assembly</param>
-        private void HandleMissingAssembly(string filename)
-        {
-            System.Console.WriteLine(GetFormattedMessage(HandleMissingAssemblyMessage, filename));
-            Environment.Exit(1);
         }
 
         #endregion Private Methods
